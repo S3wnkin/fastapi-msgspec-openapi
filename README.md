@@ -1,5 +1,10 @@
 # fastapi-msgspec-openapi
 
+[![PyPI version](https://badge.fury.io/py/fastapi-msgspec-openapi.svg)](https://pypi.org/project/fastapi-msgspec-openapi/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/S3wnkin/fastapi-msgspec-openapi/workflows/Tests/badge.svg)](https://github.com/S3wnkin/fastapi-msgspec-openapi/actions)
+
 FastAPI plugin for automatic OpenAPI schema generation from [msgspec](https://github.com/jcrist/msgspec) structs. Enables Swagger UI documentation and TypeScript type generation.
 
 ## Features
@@ -64,6 +69,27 @@ MsgSpecPlugin.inject(app)
 # ✅ Full OpenAPI documentation (developer experience)
 ```
 
+## Why msgspec Over Pydantic?
+
+**Performance**: msgspec is significantly faster than Pydantic for serialization:
+
+- 5-10x faster serialization
+- Lower memory usage
+- Native JSON encoding
+
+**When to use this plugin**:
+
+- ✅ High-throughput APIs
+- ✅ Performance-critical services
+- ✅ You want msgspec speed + OpenAPI docs
+- ✅ TypeScript type generation needed
+
+**When to stick with Pydantic**:
+
+- ❌ Complex validation logic (Pydantic has richer validation)
+- ❌ ORM integration (Pydantic works better with SQLAlchemy)
+- ❌ You don't need extreme performance
+
 ## TypeScript Type Generation
 
 Generate TypeScript types from your OpenAPI schema:
@@ -75,14 +101,14 @@ npx openapi-typescript http://localhost:8000/openapi.json -o api-types.ts
 
 ```typescript
 // Use in your frontend
-import type { components } from './api-types';
+import type { components } from "./api-types";
 
-type User = components['schemas']['User'];
+type User = components["schemas"]["User"];
 
 const user: User = {
   id: 1,
   name: "Alice",
-  email: "alice@example.com"
+  email: "alice@example.com",
 };
 ```
 
@@ -136,17 +162,76 @@ The plugin handles `Optional`, `list`, and other generic types automatically.
 3. **Response updates** - Patches FastAPI's OpenAPI schema to reference your structs
 4. **Caching** - Schema generation happens once, then cached
 
+## Limitations & Design Decisions
+
+### Why `response_model=Any`?
+
+FastAPI tries to validate/serialize the response using Pydantic when you specify a `response_model`. Since we're using msgspec structs (not Pydantic models), we use `Any` to bypass FastAPI's response handling:
+
+```python
+@app.get("/user", response_model=Any)  # Tells FastAPI: "I'll handle serialization"
+async def get_user() -> User:          # Plugin reads this for OpenAPI schema
+    return msgspec.to_builtins(...)    # We handle serialization ourselves
+```
+
+The plugin reads the **return type hint** (`-> User`) for schema generation, while `response_model=Any` prevents FastAPI from interfering.
+
+### Type Checker Warnings
+
+You may see type checker warnings like:
+
+```python
+return msgspec.to_builtins(user)  # "Returning Any from function declared to return User"
+```
+
+This is expected - `msgspec.to_builtins()` returns `Any` because it converts to dict/list at runtime. You can suppress this with:
+
+```python
+return msgspec.to_builtins(user)  # type: ignore[return-value]
+```
+
+Or configure your type checker to ignore this pattern:
+
+```toml
+# pyproject.toml
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = "your_app.*"
+disable_error_code = ["return-value"]
+```
+
+### Module-Level Struct Definitions
+
+Structs must be defined at module level for Python's `get_type_hints()` to resolve them properly:
+
+```python
+# ✅ Good - Module level
+class User(msgspec.Struct):
+    id: int
+
+# ❌ Bad - Inside function
+def create_app():
+    class User(msgspec.Struct):  # Won't be detected
+        id: int
+```
+
+This is a Python limitation, not specific to this plugin.
+
+### Why Not Use `response_model=User` Directly?
+
+FastAPI's `response_model` expects Pydantic models. If we could use msgspec structs directly, we wouldn't need this plugin! The whole purpose is to:
+
+1. Use msgspec for performance (serialization)
+2. Generate OpenAPI schemas (documentation)
+3. Keep type hints accurate (developer experience)
+
+This plugin bridges the gap by extracting schemas from type hints while letting you handle serialization with msgspec.
+
 ## Requirements
 
 - Python 3.10+
 - FastAPI 0.100.0+
 - msgspec 0.18.0+
-
-## Important Notes
-
-- ⚠️ **Struct types must be defined at module level** (not inside functions) for proper type hint resolution
-- ⚠️ **Always use `response_model=Any`** in route decorators when returning msgspec structs
-- ⚠️ **Use `msgspec.to_builtins()`** to serialize structs before returning
 
 ## Contributing
 
@@ -158,9 +243,10 @@ MIT License - see LICENSE file for details
 
 ## Credits
 
-Created by [RamsesDev](https://github.com/RamsesDev)
+Created by [S3wnkin](https://github.com/S3wnkin)
 
 Inspired by:
+
 - [msgspec](https://github.com/jcrist/msgspec) by Jim Crist-Harif
 - [FastAPI](https://github.com/tiangolo/fastapi) by Sebastián Ramírez
 - [fastapi-msgspec](https://github.com/iurii-skorniakov/fastapi-msgspec) by Iurii Skorniakov
