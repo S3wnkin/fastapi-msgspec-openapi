@@ -23,7 +23,7 @@ from fastapi_msgspec_openapi.plugin import MsgSpecPlugin
 from fastapi_msgspec_openapi.scanner import extract_struct, is_struct, scan_routes
 from fastapi_msgspec_openapi.schema import generate_struct_schemas
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "MsgSpecPlugin",

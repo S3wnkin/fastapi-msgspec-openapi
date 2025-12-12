@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fastapi-msgspec-openapi"
-version = "0.1.1"
+version = "0.1.2"
 description = "FastAPI plugin for automatic OpenAPI schema generation from msgspec structs"
 readme = "README.md"
 license = { text = "MIT" }
