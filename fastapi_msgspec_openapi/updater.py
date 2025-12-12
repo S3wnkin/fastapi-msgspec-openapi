@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 def _update_method_response(
     path: str,
     method: str,
-    struct: type[msgspec.Struct],
+    return_type: Any,
     status_code: int,
     paths: dict[str, Any],
+    openapi_schema: dict[str, Any],
 ) -> None:
     """
     Update a single method response schema to reference a msgspec.Struct.
@@ -29,9 +30,10 @@ def _update_method_response(
     Args:
         path: Route path
         method: HTTP method (lowercase)
-        struct: msgspec.Struct type to reference
+        return_type: Full return type annotation
         status_code: HTTP status code
         paths: OpenAPI paths dictionary
+        openapi_schema: Full OpenAPI schema for components updates
     """
     if method not in paths[path]:
         logger.debug("Method %s not in path %s", method.upper(), path)
@@ -52,21 +54,25 @@ def _update_method_response(
 
     description = responses[status_str].get("description", "Successful Response")
 
+    (schema,), components = msgspec.json.schema_components(
+        (return_type,),
+        ref_template="#/components/schemas/{name}",
+    )
+
+    if components:
+        schemas = openapi_schema.setdefault("components", {}).setdefault("schemas", {})
+        schemas.update(components)
+
     endpoint_schema["responses"][status_str] = {
         "description": description,
-        "content": {
-            "application/json": {
-                "schema": {"$ref": f"#/components/schemas/{struct.__name__}"}
-            }
-        },
+        "content": {"application/json": {"schema": schema}},
     }
 
     logger.debug(
-        "Updated %s %s response %s to reference %s",
+        "Updated %s %s response %s with msgspec schema",
         method.upper(),
         path,
         status_str,
-        struct.__name__,
     )
 
 
@@ -106,9 +112,10 @@ def update_route_responses(
                 _update_method_response(
                     path=path,
                     method=method.lower(),
-                    struct=struct,
+                    return_type=return_type,
                     status_code=status_code,
                     paths=paths,
+                    openapi_schema=openapi_schema,
                 )
 
         except (NameError, AttributeError) as e:
